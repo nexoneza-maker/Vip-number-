@@ -1,0 +1,11 @@
+{
+  "name": "vip-number-store-consent-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
