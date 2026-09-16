@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VIP Number Store</title>
+<style>body{font-family:system-ui;background:#090b12;color:#fff;margin:0}header{text-align:center;padding:28px;background:#141827}main{max-width:1000px;margin:25px auto;padding:15px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}.card,.modalbox{background:#121624;border:1px solid #30364b;border-radius:18px;padding:22px}.num{font-size:24px;font-weight:800}.price{font-size:20px;margin:12px 0}.btn{width:100%;padding:13px;border:0;border-radius:10px;font-weight:800;cursor:pointer;margin-top:8px}.modal{display:none;position:fixed;inset:0;background:#000c;align-items:center;justify-content:center;padding:20px}.modalbox{max-width:520px;width:100%}.status{color:#aeb5ca;white-space:pre-wrap}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}small{display:block;color:#9098ad;margin-top:8px}</style></head>
+<body><header><h1>VIP Number Store</h1><p>Calls • Images • Voice • Screen Share</p></header><main id="grid"></main>
+<div class="modal" id="modal"><div class="modalbox"><h2 id="chosen"></h2><p>Choose what you want to share. Your browser will ask for permission before any microphone, camera, or screen stream starts.</p>
+<div class="row"><button class="btn" onclick="startMedia('audio')">🎙 Voice Call</button><button class="btn" onclick="startMedia('video')">📹 Video Call</button></div>
+<button class="btn" onclick="startMedia('screen')">🖥 Screen Share</button>
+<label class="btn" style="display:block;text-align:center;box-sizing:border-box">🖼 Share Image<input id="img" type="file" accept="image/*" hidden onchange="sendImage()"></label>
+<button class="btn" onclick="closeM()">Cancel</button><p id="status" class="status"></p><video id="preview" autoplay muted playsinline style="width:100%;display:none;border-radius:12px;margin-top:10px"></video><img id="imagePreview" style="width:100%;display:none;border-radius:12px;margin-top:10px"></div></div>
+<script>
+const nums=[['20 11111111 20','₹2,999'],['98 77777777 98','₹4,999'],['70 88888888 70','₹3,999'],['99 99999999 99','₹5,999']];
+let sel,ws,viewerId,pc,stream,pendingIce=[];
+const grid=document.getElementById('grid'), modal=document.getElementById('modal'), chosen=document.getElementById('chosen'), status=document.getElementById('status'), preview=document.getElementById('preview'), imagePreview=document.getElementById('imagePreview'), img=document.getElementById('img');
+grid.innerHTML=nums.map((n,i)=>`<div class="card"><div class="num">${n[0]}</div><div class="price">${n[1]}</div><button class="btn" onclick="openM(${i})">Purchase / Connect</button></div>`).join('');
+function socketUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host}
+function openM(i){sel=nums[i];chosen.textContent=sel[0];modal.style.display='flex';connect();}
+function closeM(){modal.style.display='none';stopStream();}
+function stopStream(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}if(pc){pc.close();pc=null}preview.srcObject=null;}
+function connect(){if(ws&&ws.readyState<2)return;ws=new WebSocket(socketUrl());ws.onopen=()=>{ws.send(JSON.stringify({type:'register-store'}));status.textContent='Connected. Waiting for viewer…';};ws.onmessage=async e=>{const m=JSON.parse(e.data);
+ if(m.type==='viewer-online'){viewerId=m.from;status.textContent='Viewer connected. Tap Screen Share and allow the browser permission.';return;}
+ if(m.type==='answer'&&pc){try{await pc.setRemoteDescription(m.answer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];status.textContent='Screen/video/voice is connected to the viewer.';}catch(err){status.textContent='Could not finish WebRTC connection: '+err.message;}return;}
+ if(m.type==='ice'&&pc){try{if(pc.remoteDescription)await pc.addIceCandidate(m.candidate);else pendingIce.push(m.candidate);}catch(err){console.log(err);}}
+ };
+ ws.onerror=()=>status.textContent='Cannot connect to the server. Open this page from the server HTTPS address, not from a content:// file.';
+}
+async function startMedia(kind){
+ try{
+  if(!window.isSecureContext){status.textContent='Screen sharing needs a secure website. This page is opened as content://, so Chrome will not show the permission. Open the deployed HTTPS website instead.';return;}
+  if(!navigator.mediaDevices){status.textContent='This browser context does not provide media access. Use a current Chrome/Edge page served over HTTPS.';return;}
+  if(!viewerId){status.textContent='Viewer is not connected yet. Keep the Viewer page open, then try again.';return;}
+  stopStream(); pendingIce=[];
+  if(kind==='screen') stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+  else if(kind==='video') stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+  else stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  preview.style.display=kind==='audio'?'none':'block';
+  if(kind!=='audio')preview.srcObject=stream;
+  pc=new RTCPeerConnection();
+  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.onicecandidate=e=>{if(e.candidate)ws.send(JSON.stringify({to:viewerId,type:'ice',candidate:e.candidate}));};
+  const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({to:viewerId,type:'offer',offer,kind}));
+  status.textContent='Permission granted. Connecting to viewer…';
+  stream.getTracks().forEach(t=>t.onended=()=>{status.textContent='Sharing ended by the browser/user.';});
+ }catch(e){status.textContent='Permission/share failed: '+(e.name||'Error')+' — '+(e.message||'No details');}
+}
+function sendImage(){const f=img.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{imagePreview.src=r.result;imagePreview.style.display='block';status.textContent='Image selected locally. Network image transfer is not enabled in this demo.'};r.readAsDataURL(f)}
+</script></body></html>
