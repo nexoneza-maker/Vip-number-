@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private Viewer</title>
+<style>body{font-family:system-ui;background:#080a0f;color:#fff;margin:0}.top{padding:22px;border-bottom:1px solid #292e40}.wrap{max-width:1100px;margin:auto;padding:20px}.panel{background:#111521;border:1px solid #2a3042;border-radius:16px;padding:20px}.screen{margin-top:18px;background:#000;min-height:500px;display:grid;place-items:center;border-radius:14px;padding:10px}video{max-width:100%;max-height:75vh}.pill{padding:10px 14px;border-radius:10px;background:#22283a;display:inline-block}</style></head>
+<body><div class="top"><b>Private Viewer — Admin</b></div><div class="wrap"><div class="panel"><h2>Live Sessions</h2><p id="status" class="pill">Connecting…</p><div class="screen"><video id="video" autoplay playsinline controls></video><audio id="audio" autoplay controls></audio></div></div></div>
+<script>
+let ws,pc,sourceId,pendingIce=[];const status=document.getElementById('status'),video=document.getElementById('video'),audio=document.getElementById('audio');
+function socketUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host}
+ws=new WebSocket(socketUrl());
+ws.onopen=()=>{ws.send(JSON.stringify({type:'register-viewer'}));status.textContent='Viewer online. Waiting for a store to start sharing…';};
+ws.onerror=()=>status.textContent='Cannot connect to the server.';
+ws.onmessage=async e=>{const m=JSON.parse(e.data);
+ if(m.type==='store-online'){status.textContent='Store online. Waiting for the user to choose Screen Share, Video, or Voice.';return;}
+ if(m.type==='offer'){
+  sourceId=m.from;pendingIce=[];if(pc)pc.close();pc=new RTCPeerConnection();
+  pc.ontrack=ev=>{const s=ev.streams[0];if(m.kind==='audio'){audio.srcObject=s;audio.style.display='block';status.textContent='Voice call is live.';}else{video.srcObject=s;video.style.display='block';status.textContent=m.kind==='screen'?'Screen share is live.':'Video call is live.';}};
+  pc.onicecandidate=ev=>{if(ev.candidate)ws.send(JSON.stringify({to:sourceId,type:'ice',candidate:ev.candidate}));};
+  await pc.setRemoteDescription(m.offer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];
+  const ans=await pc.createAnswer();await pc.setLocalDescription(ans);ws.send(JSON.stringify({to:sourceId,type:'answer',answer:ans}));return;
+ }
+ if(m.type==='ice'&&pc){try{if(pc.remoteDescription)await pc.addIceCandidate(m.candidate);else pendingIce.push(m.candidate);}catch(err){console.log(err);}}
+};
+</script></body></html>
